@@ -120,15 +120,24 @@ class ReactiveMap extends Component {
 			= this.mapStyles.find(style => style.label === props.defaultMapStyle)
 			|| this.mapStyles[0];
 
+		let pageFromUrlParam = -1;
+		if (this.props.paginationUrlParam) {
+			const urlParams = new URLSearchParams(window.location.search);
+			if (urlParams.get(this.props.paginationUrlParam) && !isNaN(Number(urlParams.get(this.props.paginationUrlParam)))) {
+				pageFromUrlParam = Math.max(Number(urlParams.get(this.props.paginationUrlParam)) - 1, 0);
+			}
+		}
+
 		this.state = {
 			currentMapStyle,
-			from: props.currentPage * props.size || 0,
+			from: (pageFromUrlParam > -1 ? pageFromUrlParam : props.currentPage) * props.size || 0,
 			totalPages: 0,
-			currentPage: props.currentPage,
+			currentPage: pageFromUrlParam > -1 ? pageFromUrlParam : props.currentPage,
 			mapBoxBounds: null,
 			searchAsMove: props.searchAsMove,
 			zoom: props.defaultZoom,
 			preserveCenter: false,
+			initializedDefaultQuery: false,
 		};
 
 		this.internalComponent = `${props.componentId}__internal`;
@@ -174,7 +183,7 @@ class ReactiveMap extends Component {
 			const forceExecute = false;
 
 			// Update default query for RS API
-			this.setDefaultQueryForRSAPI();
+			this.setDefaultQueryForRSAPI(true);
 
 			this.props.setMapData(
 				this.props.componentId,
@@ -216,7 +225,46 @@ class ReactiveMap extends Component {
 		this.setReact(this.props);
 	}
 
-	componentDidUpdate(prevProps) {
+	componentDidUpdate(prevProps, prevState) {
+		if (!prevState.initializedDefaultQuery && this.state.initializedDefaultQuery) {
+			this.setDefaultQueryForRSAPI(false);
+		}
+
+		if (
+			prevProps.queryLog
+			&& this.props.queryLog
+			&& prevProps.queryLog !== this.props.queryLog
+		) {
+			// usecase:
+			// - query has changed from non-null prev query
+
+			if (this.props.queryLog.from !== this.state.from) {
+				// query's 'from' key doesn't match the state's 'from' key,
+				// i.e. this query change was not triggered by the page change (loadMore)
+				// eslint-disable-next-line
+				this.setState(
+					{
+						currentPage: 0,
+						from: 0,
+					},
+					() => {
+						if (this.props.paginationUrlParam) {
+							if (window.history.pushState) {
+								const urlParams = new URLSearchParams(window.location.search);
+								urlParams.set(this.props.paginationUrlParam, 1);
+								const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?${urlParams.toString()}`;
+								window.history.pushState({ path: newurl }, '', newurl);
+							}
+						}
+					},
+				);
+
+				if (this.props.onPageChange) {
+					this.props.onPageChange(1, totalPages);
+				}
+			}
+		}
+
 		checkSomePropChange(this.props, prevProps, getValidPropsKeys(this.props), () => {
 			this.props.updateComponentProps(
 				this.props.componentId,
@@ -362,6 +410,17 @@ class ReactiveMap extends Component {
 		}
 
 		this.updateState(updatedState);
+
+		if (this.state.currentPage !== prevState.currentPage && (this.state.currentPage || this.state.currentPage === 0)) {
+			if (this.props.paginationUrlParam) {
+				if (window.history.pushState) {
+					const urlParams = new URLSearchParams(window.location.search);
+					urlParams.set(this.props.paginationUrlParam, this.state.currentPage + 1);
+					const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?${urlParams.toString()}`;
+					window.history.pushState({ path: newurl }, '', newurl);
+				}
+			}
+		}
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
@@ -463,7 +522,7 @@ class ReactiveMap extends Component {
 		}
 	};
 
-	setDefaultQueryForRSAPI = () => {
+	setDefaultQueryForRSAPI = (initializing) => {
 		if (this.props.defaultQuery && typeof this.props.defaultQuery === 'function') {
 			let defaultQuery = this.props.defaultQuery();
 			if (this.state.mapBoxBounds) {
@@ -484,8 +543,21 @@ class ReactiveMap extends Component {
 						...options,
 					};
 				}
+			} else if (initializing && defaultQuery && defaultQuery.query) {
+				defaultQuery = {
+					query: defaultQuery.query,
+					from: this.state.from,
+				};
+				this.setState({ initializedDefaultQuery: true });
 			}
 			this.props.setDefaultQuery(this.props.componentId, defaultQuery);
+			this.props.updateQuery(
+				{
+					componentId: this.internalComponent,
+					query: defaultQuery,
+				},
+				true,
+			);
 		}
 	}
 
@@ -833,15 +905,21 @@ class ReactiveMap extends Component {
 		return updatedHits;
 	};
 
-	renderPagination = () => (
-		<Pagination
-			pages={this.props.pages}
-			totalPages={this.state.totalPages}
-			currentPage={this.state.currentPage}
-			setPage={this.setPage}
-			innerClass={this.props.innerClass}
-		/>
-	);
+	renderPagination = () => {
+		const paginationProps = {
+			pages: this.props.pages,
+			totalPages: this.state.totalPages,
+			currentPage: this.state.currentPage,
+			setPage: this.setPage,
+			innerClass: this.props.innerClass,
+			fragmentName: this.props.componentId,
+		};
+
+		if (this.props.renderPagination) {
+			return this.props.renderPagination(paginationProps);
+		}
+		return <Pagination {...paginationProps} />
+	};
 
 	getResultsToRender = () => {
 		const results = parseHits(this.props.hits) || [];
@@ -981,6 +1059,8 @@ class ReactiveMap extends Component {
 			position: 'relative',
 		};
 
+		// console.log('RENDERING...', this.state.currentPage, this.state.totalPages);
+
 		return (
 			<div style={{ ...style, ...this.props.style }} className={this.props.className}>
 				{this.renderError()}
@@ -992,7 +1072,7 @@ class ReactiveMap extends Component {
 							this.withClickIds(parseHits(this.props.streamHits)),
 							this.loadMore,
 							() => this.props.renderMap(this.mapParams),
-							this.renderPagination,
+							() => this.renderPagination(),
 							this.triggerAnalytics,
 							this.getData(),
 						) // prettier-ignore
@@ -1060,6 +1140,8 @@ ReactiveMap.propTypes = {
 	onPopoverClick: types.func,
 	pages: types.number,
 	pagination: types.bool,
+	renderPagination: types.func,
+	paginationUrlParam: types.string,
 	react: types.react,
 	searchAsMove: types.bool,
 	showMapStyles: types.bool,
@@ -1099,6 +1181,7 @@ const mapStateToProps = (state, props) => ({
 	promotedResults: state.promotedResults[props.componentId] || [],
 	customData: state.customData[props.componentId],
 	hidden: state.hits[props.componentId] && state.hits[props.componentId].hidden,
+	queryLog: state.queryLog[props.componentId],
 });
 
 const mapDispatchtoProps = dispatch => ({

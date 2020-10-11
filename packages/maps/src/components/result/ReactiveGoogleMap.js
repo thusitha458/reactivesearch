@@ -52,7 +52,7 @@ class ReactiveGoogleMap extends Component {
 		};
 	}
 
-	componentDidUpdate(prevProps) {
+	componentDidUpdate(prevProps, prevState) {
 		if (this.props.defaultMapStyle !== prevProps.defaultMapStyle) {
 			this.handleStyleChange(this.props.defaultMapStyle);
 		}
@@ -203,6 +203,7 @@ ReactiveGoogleMap.propTypes = {
 	onData: types.func,
 	pages: types.number,
 	pagination: types.bool,
+	renderPagination: types.func,
 	react: types.react,
 	searchAsMove: types.bool,
 	showMapStyles: types.bool,

@@ -17,22 +17,22 @@ body {
 	padding: 15px;
 }
 
-.row > .col:first-child {
+/* .row > .col:first-child {
 	border-right: 1px solid #ccc;
 	max-width: 400px;
-}
+} */
 
-.row > .col:last-child {
+/* .row > .col:last-child {
 	background: #fafafa;
-}
+} */
 
 @media all and (max-width: 767px) {
     .row {
         flex-direction: column;
     }
 
-    .row > .col:first-child {
+    /* .row > .col:first-child {
         border-right: none;
         max-width: none;
-    }
+    } */
 }
