@@ -4,6 +4,7 @@ logs
 *.log
 npm-debug.log*
 lib
+!packages/maps/lib
 stats.json
 .expo/
 *.swp

@@ -136,7 +136,9 @@ var ReactiveMap = function (_Component) {
 		var pageFromUrlParam = -1;
 		if (_this.props.paginationUrlParam) {
 			var urlParams = new URLSearchParams(window.location.search);
-			if (urlParams.get(_this.props.paginationUrlParam) && !isNaN(Number(urlParams.get(_this.props.paginationUrlParam)))) {
+			if (urlParams.get(_this.props.paginationUrlParam)
+			// eslint-disable-next-line no-restricted-globals
+			&& !isNaN(Number(urlParams.get(_this.props.paginationUrlParam)))) {
 				pageFromUrlParam = Math.max(Number(urlParams.get(_this.props.paginationUrlParam)) - 1, 0);
 			}
 		}
@@ -149,8 +151,7 @@ var ReactiveMap = function (_Component) {
 			mapBoxBounds: null,
 			searchAsMove: props.searchAsMove,
 			zoom: props.defaultZoom,
-			preserveCenter: false,
-			initializedDefaultQuery: false
+			preserveCenter: false
 		};
 
 		_this.internalComponent = props.componentId + '__internal';
@@ -195,7 +196,7 @@ var ReactiveMap = function (_Component) {
 			var forceExecute = false;
 
 			// Update default query for RS API
-			this.setDefaultQueryForRSAPI(true);
+			this.setDefaultQueryForRSAPI();
 
 			this.props.setMapData(this.props.componentId, this.defaultQuery.query, persistMapQuery, forceExecute);
 		} else {
@@ -228,40 +229,8 @@ var ReactiveMap = function (_Component) {
 		this.setReact(this.props);
 	};
 
-	ReactiveMap.prototype.componentDidUpdate = function componentDidUpdate(prevProps, prevState) {
+	ReactiveMap.prototype.componentDidUpdate = function componentDidUpdate(prevProps) {
 		var _this2 = this;
-
-		if (!prevState.initializedDefaultQuery && this.state.initializedDefaultQuery) {
-			this.setDefaultQueryForRSAPI(false);
-		}
-
-		if (prevProps.queryLog && this.props.queryLog && prevProps.queryLog !== this.props.queryLog) {
-			// usecase:
-			// - query has changed from non-null prev query
-
-			if (this.props.queryLog.from !== this.state.from) {
-				// query's 'from' key doesn't match the state's 'from' key,
-				// i.e. this query change was not triggered by the page change (loadMore)
-				// eslint-disable-next-line
-				this.setState({
-					currentPage: 0,
-					from: 0
-				}, function () {
-					if (_this2.props.paginationUrlParam) {
-						if (window.history.pushState) {
-							var urlParams = new URLSearchParams(window.location.search);
-							urlParams.set(_this2.props.paginationUrlParam, 1);
-							var newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + ('?' + urlParams.toString());
-							window.history.pushState({ path: newurl }, '', newurl);
-						}
-					}
-				});
-
-				if (this.props.onPageChange) {
-					this.props.onPageChange(1, totalPages);
-				}
-			}
-		}
 
 		(0, _helper.checkSomePropChange)(this.props, prevProps, (0, _utils.getValidPropsKeys)(this.props), function () {
 			_this2.props.updateComponentProps(_this2.props.componentId, _this2.props, _constants.componentTypes.reactiveMap);
@@ -351,6 +320,20 @@ var ReactiveMap = function (_Component) {
 		if (this.props.pagination && this.props.total !== prevProps.total) {
 			updatedState.totalPages = Math.ceil(this.props.total / this.props.size);
 			updatedState.currentPage = prevProps.total ? 0 : this.state.currentPage;
+			if (prevProps.total && this.props.paginationUrlParam) {
+				this.props.setPageURL(this.props.paginationUrlParam, 1, this.props.paginationUrlParam, false, true);
+			}
+			if (prevProps.total === undefined && this.props.defaultQuery) {
+				// after first load only
+				var _options2 = (0, _helper.getQueryOptions)(this.props);
+				_options2.from = 0;
+				var _sort = this.defaultQuery.sort;
+
+				if (_sort) {
+					_options2.sort = _sort;
+				}
+				this.props.setQueryOptions(this.props.componentId, _options2, false);
+			}
 		}
 
 		if (this.props.searchAsMove !== prevProps.searchAsMove) {
@@ -369,17 +352,6 @@ var ReactiveMap = function (_Component) {
 		}
 
 		this.updateState(updatedState);
-
-		if (this.state.currentPage !== prevState.currentPage && (this.state.currentPage || this.state.currentPage === 0)) {
-			if (this.props.paginationUrlParam) {
-				if (window.history.pushState) {
-					var urlParams = new URLSearchParams(window.location.search);
-					urlParams.set(this.props.paginationUrlParam, this.state.currentPage + 1);
-					var newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + ('?' + urlParams.toString());
-					window.history.pushState({ path: newurl }, '', newurl);
-				}
-			}
-		}
 	};
 
 	ReactiveMap.prototype.shouldComponentUpdate = function shouldComponentUpdate(nextProps, nextState) {
@@ -564,7 +536,7 @@ var _initialiseProps = function _initialiseProps() {
 		}
 	};
 
-	this.setDefaultQueryForRSAPI = function (initializing) {
+	this.setDefaultQueryForRSAPI = function () {
 		if (_this4.props.defaultQuery && typeof _this4.props.defaultQuery === 'function') {
 			var defaultQuery = _this4.props.defaultQuery();
 			if (_this4.state.mapBoxBounds) {
@@ -587,12 +559,6 @@ var _initialiseProps = function _initialiseProps() {
 						}
 					}, options);
 				}
-			} else if (initializing && defaultQuery && defaultQuery.query) {
-				defaultQuery = {
-					query: defaultQuery.query,
-					from: _this4.state.from
-				};
-				_this4.setState({ initializedDefaultQuery: true });
 			}
 			_this4.props.setDefaultQuery(_this4.props.componentId, defaultQuery);
 			_this4.props.updateQuery({
@@ -788,6 +754,9 @@ var _initialiseProps = function _initialiseProps() {
 
 		if (_this4.props.URLParams) {
 			_this4.props.setPageURL(_this4.props.componentId + '-page', page + 1, _this4.props.componentId + '-page', false, true);
+		}
+		if (_this4.props.paginationUrlParam) {
+			_this4.props.setPageURL(_this4.props.paginationUrlParam, page + 1, _this4.props.paginationUrlParam, false, true);
 		}
 	};
 
@@ -1175,6 +1144,9 @@ var mapDispatchtoProps = function mapDispatchtoProps(dispatch) {
 		},
 		triggerAnalytics: function triggerAnalytics(searchPosition, docId) {
 			return dispatch((0, _actions.recordResultClick)(searchPosition, docId));
+		},
+		setPageURL: function setPageURL(component, value, label, showFilter, URLParams) {
+			return dispatch((0, _actions.setValue)(component, value, label, showFilter, URLParams));
 		}
 	};
 };

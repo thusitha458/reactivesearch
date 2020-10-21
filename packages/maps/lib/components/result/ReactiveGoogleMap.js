@@ -86,7 +86,7 @@ var ReactiveGoogleMap = function (_Component) {
 		return _this;
 	}
 
-	ReactiveGoogleMap.prototype.componentDidUpdate = function componentDidUpdate(prevProps, prevState) {
+	ReactiveGoogleMap.prototype.componentDidUpdate = function componentDidUpdate(prevProps) {
 		if (this.props.defaultMapStyle !== prevProps.defaultMapStyle) {
 			this.handleStyleChange(this.props.defaultMapStyle);
 		}

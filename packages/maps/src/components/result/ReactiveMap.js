@@ -13,6 +13,7 @@ import {
 	setComponentProps,
 	updateComponentProps,
 	recordResultClick,
+	setValue,
 } from '@appbaseio/reactivecore/lib/actions';
 import {
 	isEqual,
@@ -123,7 +124,9 @@ class ReactiveMap extends Component {
 		let pageFromUrlParam = -1;
 		if (this.props.paginationUrlParam) {
 			const urlParams = new URLSearchParams(window.location.search);
-			if (urlParams.get(this.props.paginationUrlParam) && !isNaN(Number(urlParams.get(this.props.paginationUrlParam)))) {
+			if (urlParams.get(this.props.paginationUrlParam)
+				// eslint-disable-next-line no-restricted-globals
+				&& !isNaN(Number(urlParams.get(this.props.paginationUrlParam)))) {
 				pageFromUrlParam = Math.max(Number(urlParams.get(this.props.paginationUrlParam)) - 1, 0);
 			}
 		}
@@ -137,7 +140,6 @@ class ReactiveMap extends Component {
 			searchAsMove: props.searchAsMove,
 			zoom: props.defaultZoom,
 			preserveCenter: false,
-			initializedDefaultQuery: false,
 		};
 
 		this.internalComponent = `${props.componentId}__internal`;
@@ -183,7 +185,7 @@ class ReactiveMap extends Component {
 			const forceExecute = false;
 
 			// Update default query for RS API
-			this.setDefaultQueryForRSAPI(true);
+			this.setDefaultQueryForRSAPI();
 
 			this.props.setMapData(
 				this.props.componentId,
@@ -225,46 +227,7 @@ class ReactiveMap extends Component {
 		this.setReact(this.props);
 	}
 
-	componentDidUpdate(prevProps, prevState) {
-		if (!prevState.initializedDefaultQuery && this.state.initializedDefaultQuery) {
-			this.setDefaultQueryForRSAPI(false);
-		}
-
-		if (
-			prevProps.queryLog
-			&& this.props.queryLog
-			&& prevProps.queryLog !== this.props.queryLog
-		) {
-			// usecase:
-			// - query has changed from non-null prev query
-
-			if (this.props.queryLog.from !== this.state.from) {
-				// query's 'from' key doesn't match the state's 'from' key,
-				// i.e. this query change was not triggered by the page change (loadMore)
-				// eslint-disable-next-line
-				this.setState(
-					{
-						currentPage: 0,
-						from: 0,
-					},
-					() => {
-						if (this.props.paginationUrlParam) {
-							if (window.history.pushState) {
-								const urlParams = new URLSearchParams(window.location.search);
-								urlParams.set(this.props.paginationUrlParam, 1);
-								const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?${urlParams.toString()}`;
-								window.history.pushState({ path: newurl }, '', newurl);
-							}
-						}
-					},
-				);
-
-				if (this.props.onPageChange) {
-					this.props.onPageChange(1, totalPages);
-				}
-			}
-		}
-
+	componentDidUpdate(prevProps) {
 		checkSomePropChange(this.props, prevProps, getValidPropsKeys(this.props), () => {
 			this.props.updateComponentProps(
 				this.props.componentId,
@@ -389,6 +352,25 @@ class ReactiveMap extends Component {
 		if (this.props.pagination && this.props.total !== prevProps.total) {
 			updatedState.totalPages = Math.ceil(this.props.total / this.props.size);
 			updatedState.currentPage = prevProps.total ? 0 : this.state.currentPage;
+			if (prevProps.total && this.props.paginationUrlParam) {
+				this.props.setPageURL(
+					this.props.paginationUrlParam,
+					1,
+					this.props.paginationUrlParam,
+					false,
+					true,
+				);
+			}
+			if (prevProps.total === undefined && this.props.defaultQuery) {
+				// after first load only
+				const options = getQueryOptions(this.props);
+				options.from = 0;
+				const { sort } = this.defaultQuery;
+				if (sort) {
+					options.sort = sort;
+				}
+				this.props.setQueryOptions(this.props.componentId, options, false);
+			}
 		}
 
 		if (this.props.searchAsMove !== prevProps.searchAsMove) {
@@ -410,17 +392,6 @@ class ReactiveMap extends Component {
 		}
 
 		this.updateState(updatedState);
-
-		if (this.state.currentPage !== prevState.currentPage && (this.state.currentPage || this.state.currentPage === 0)) {
-			if (this.props.paginationUrlParam) {
-				if (window.history.pushState) {
-					const urlParams = new URLSearchParams(window.location.search);
-					urlParams.set(this.props.paginationUrlParam, this.state.currentPage + 1);
-					const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?${urlParams.toString()}`;
-					window.history.pushState({ path: newurl }, '', newurl);
-				}
-			}
-		}
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
@@ -522,7 +493,7 @@ class ReactiveMap extends Component {
 		}
 	};
 
-	setDefaultQueryForRSAPI = (initializing) => {
+	setDefaultQueryForRSAPI = () => {
 		if (this.props.defaultQuery && typeof this.props.defaultQuery === 'function') {
 			let defaultQuery = this.props.defaultQuery();
 			if (this.state.mapBoxBounds) {
@@ -543,12 +514,6 @@ class ReactiveMap extends Component {
 						...options,
 					};
 				}
-			} else if (initializing && defaultQuery && defaultQuery.query) {
-				defaultQuery = {
-					query: defaultQuery.query,
-					from: this.state.from,
-				};
-				this.setState({ initializedDefaultQuery: true });
 			}
 			this.props.setDefaultQuery(this.props.componentId, defaultQuery);
 			this.props.updateQuery(
@@ -768,6 +733,15 @@ class ReactiveMap extends Component {
 				true,
 			);
 		}
+		if (this.props.paginationUrlParam) {
+			this.props.setPageURL(
+				this.props.paginationUrlParam,
+				page + 1,
+				this.props.paginationUrlParam,
+				false,
+				true,
+			);
+		}
 	};
 
 	getPosition = (result) => {
@@ -918,7 +892,7 @@ class ReactiveMap extends Component {
 		if (this.props.renderPagination) {
 			return this.props.renderPagination(paginationProps);
 		}
-		return <Pagination {...paginationProps} />
+		return <Pagination {...paginationProps} />;
 	};
 
 	getResultsToRender = () => {
@@ -1203,6 +1177,8 @@ const mapDispatchtoProps = dispatch => ({
 	updateComponentProps: (component, options) =>
 		dispatch(updateComponentProps(component, options)),
 	triggerAnalytics: (searchPosition, docId) => dispatch(recordResultClick(searchPosition, docId)),
+	setPageURL: (component, value, label, showFilter, URLParams) =>
+		dispatch(setValue(component, value, label, showFilter, URLParams)),
 });
 
 export default connect(

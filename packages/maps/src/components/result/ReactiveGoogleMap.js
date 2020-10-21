@@ -52,7 +52,7 @@ class ReactiveGoogleMap extends Component {
 		};
 	}
 
-	componentDidUpdate(prevProps, prevState) {
+	componentDidUpdate(prevProps) {
 		if (this.props.defaultMapStyle !== prevProps.defaultMapStyle) {
 			this.handleStyleChange(this.props.defaultMapStyle);
 		}
